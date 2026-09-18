@@ -1,0 +1,6 @@
+{
+  "name": "B1Stock - Spare Parts Warehouse Inventory",
+  "description": "Mobile-first PDA web app for warehouse spare parts stock counting and SAP discrepancy reconciliation.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
