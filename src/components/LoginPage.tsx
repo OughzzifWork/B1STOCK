@@ -12,6 +12,7 @@ import {
   EyeOff,
   AlertCircle
 } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface LoginPageProps {
   users: AppUser[];
@@ -93,6 +94,9 @@ export const LoginPage: React.FC<LoginPageProps> = ({ users, onLogin }) => {
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto font-medium mt-1">
               Inventaire Mobile PDA Pièces de Rechange & Connexion Directe Base de Données SAP
             </p>
+            <div className="flex justify-center mt-3">
+              <PWAInstallButton variant="pill" />
+            </div>
           </div>
         </div>
 

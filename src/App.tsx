@@ -20,6 +20,7 @@ import { SettingsView } from './components/SettingsView';
 import { ProfileView } from './components/ProfileView';
 import { MobileBottomNav } from './components/MobileBottomNav';
 import { HistoryModal } from './components/HistoryModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { playSound, setSoundEnabled } from './utils/sound';
 import { CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -105,20 +106,11 @@ export default function App() {
     return INITIAL_ENTITIES;
   });
 
-  // Authenticated user state
-  const [currentUser, setCurrentUser] = useState<AppUser | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY_AUTH_USER);
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    // Default: logged in as SuperAdmin for effortless testing
-    return INITIAL_USERS[0];
-  });
+  // Authenticated user state - Mandatory login at application start
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
 
-  // Navigation tab state
-  const [currentTab, setCurrentTab] = useState<NavigationTab>('inventaire');
+  // Navigation tab state - Accessible after login, starting on Dashboard
+  const [currentTab, setCurrentTab] = useState<NavigationTab>('dashboard');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Inventory records state
@@ -272,11 +264,14 @@ export default function App() {
   // Login & Logout
   const handleLogin = (user: AppUser) => {
     setCurrentUser(user);
+    setCurrentTab('dashboard');
+    playSound('success');
     showToast(`Bienvenue, ${user.name} (${user.role}) !`, 'success');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setCurrentTab('dashboard');
     setActiveArticle(null);
     setScanInput('');
     setRealCount('');
@@ -445,7 +440,12 @@ export default function App() {
 
   // If not logged in, render Login Page
   if (!currentUser) {
-    return <LoginPage users={users} onLogin={handleLogin} />;
+    return (
+      <>
+        <LoginPage users={users} onLogin={handleLogin} />
+        <OfflineIndicator />
+      </>
+    );
   }
 
   // Active entity
@@ -620,6 +620,9 @@ export default function App() {
         onDeleteRecord={handleDeleteRecord}
         onClearAll={handleClearAllRecords}
       />
+
+      {/* PWA Offline Connection Indicator */}
+      <OfflineIndicator />
     </div>
   );
 }

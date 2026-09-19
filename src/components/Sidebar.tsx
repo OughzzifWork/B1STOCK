@@ -10,6 +10,7 @@ import {
   LogOut, 
   X
 } from 'lucide-react';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface SidebarProps {
   currentTab: NavigationTab;
@@ -248,8 +249,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
           })}
         </nav>
 
-        {/* Sidebar Footer: KEEP JUST LOGOUT BUTTON */}
-        <div className={`border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 ${isCollapsed ? 'p-2' : 'p-3'}`}>
+        {/* Sidebar Footer: PWA Install & Logout */}
+        <div className={`border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 ${isCollapsed ? 'p-2' : 'p-3'} space-y-2`}>
+          {!isCollapsed && <PWAInstallButton variant="sidebar" />}
           {isCollapsed ? (
             <button
               type="button"
