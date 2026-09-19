@@ -26,7 +26,9 @@ import {
   FileCode,
   Sparkles,
   ShieldCheck,
-  CheckCircle
+  CheckCircle,
+  Activity,
+  Wifi
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -96,7 +98,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     address: '',
   });
 
-  // SAP connection test simulation state
+  // Dedicated Entity SQL DB Modal state
+  const [selectedEntityForSqlModal, setSelectedEntityForSqlModal] = useState<WarehouseEntity | null>(null);
+
+  // SAP communication test simulation state
+  const [testingConnectionEntityId, setTestingConnectionEntityId] = useState<string | null>(null);
+  const [connectionTestResultMap, setConnectionTestResultMap] = useState<Record<string, {
+    success: boolean;
+    latency: number;
+    testedAt: string;
+    serverVersion: string;
+    details: string;
+  } | null>>({});
+
+  // SAP query test simulation state
   const [testingSapEntityId, setTestingSapEntityId] = useState<string | null>(null);
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
   const [testQueryResultMap, setTestQueryResultMap] = useState<Record<string, {
@@ -298,7 +313,65 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     onUpdateEntities(updated);
   };
 
-  // Execute and test the manual SQL query directly against the simulated SAP DB
+  // Step 1: Test raw TCP/IP socket communication & authentication with the SAP Database
+  const handleTestDatabaseCommunication = (entityId: string) => {
+    const ent = entities.find((e) => e.id === entityId);
+    if (!ent) return;
+
+    setTestingConnectionEntityId(entityId);
+
+    setTimeout(() => {
+      const now = new Date();
+      const formattedTimestamp = `${now.toLocaleDateString('fr-FR')} ${now.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      })}`;
+
+      const latency = Math.floor(Math.random() * 15) + 12; // 12-27ms realistic DB ping
+      const engine = ent.sapConfig.dbEngine;
+      let serverVersion = 'Microsoft SQL Server 2022 (RTM-CU12) - 16.0.4115.5';
+      if (engine === 'HANA') {
+        serverVersion = 'SAP HANA Database 2.00.066.00 (HDB Core)';
+      } else if (engine === 'POSTGRES') {
+        serverVersion = 'PostgreSQL 16.2 on x86_64-pc-linux-gnu';
+      }
+
+      setConnectionTestResultMap((prev) => ({
+        ...prev,
+        [entityId]: {
+          success: true,
+          latency,
+          testedAt: formattedTimestamp,
+          serverVersion,
+          details: `Socket TCP ouvert sur ${ent.sapConfig.serverHost}:${ent.sapConfig.port} • Base "${ent.sapConfig.databaseName}" joignable • Authentification réussie pour l'utilisateur "${ent.sapConfig.username}".`,
+        },
+      }));
+
+      const updated = entities.map((e) => {
+        if (e.id === entityId) {
+          return {
+            ...e,
+            sapConfig: {
+              ...e.sapConfig,
+              status: 'CONNECTED' as const,
+              lastTested: formattedTimestamp,
+            },
+          };
+        }
+        return e;
+      });
+
+      onUpdateEntities(updated);
+      setTestingConnectionEntityId(null);
+      showToast(
+        `Communication avec la base de données SAP établie (${latency} ms) sur ${ent.sapConfig.serverHost}:${ent.sapConfig.port} !`,
+        'success'
+      );
+    }, 600);
+  };
+
+  // Step 2: Execute and test the manual SQL query directly against the simulated SAP DB
   const handleTestSapDirectQuery = (entityId: string) => {
     const ent = entities.find((e) => e.id === entityId);
     if (!ent) return;
@@ -386,7 +459,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       onUpdateEntities(updated);
       setTestingSapEntityId(null);
       showToast(
-        `Connexion Directe DB établie avec succès (${latency} ms) ! 148 articles extraits.`,
+        `Requête SELECT exécutée avec succès (${latency} ms) ! 148 articles extraits.`,
         'success'
       );
     }, 800);
@@ -489,7 +562,7 @@ ORDER BY T0."ItemCode" ASC`;
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Sites & Entités Logistiques ({entities.length})</span>
+          <span>Entités ({entities.length})</span>
         </button>
 
         <button
@@ -666,10 +739,10 @@ ORDER BY T0."ItemCode" ASC`;
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                Sites & Entrepôts Logistiques B1Stock
+                Entités B1Stock ({entities.length})
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Chaque site possède sa propre base de données SAP et son paramétrage de requête SQL direct.
+                Chaque entité possède sa propre base de données SAP et son paramétrage de requête SQL direct.
               </p>
             </div>
             <button
@@ -678,7 +751,7 @@ ORDER BY T0."ItemCode" ASC`;
               className="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition min-h-[38px] self-start sm:self-auto"
             >
               <Plus className="w-4 h-4" />
-              <span>Ajouter un Entrepôt</span>
+              <span>Ajouter une Entité</span>
             </button>
           </div>
 
@@ -730,10 +803,12 @@ ORDER BY T0."ItemCode" ASC`;
                     </span>
                     <button
                       type="button"
-                      onClick={() => setActiveTab('sap')}
-                      className="text-red-600 dark:text-red-400 font-bold hover:underline text-xs"
+                      id={`btn-sql-modal-${ent.id}`}
+                      onClick={() => setSelectedEntityForSqlModal(ent)}
+                      className="text-red-600 dark:text-red-400 font-bold hover:underline text-xs flex items-center gap-1 cursor-pointer transition active:scale-95"
+                      title={`Configurer la connexion DB et tester les requêtes pour ${ent.name}`}
                     >
-                      Requête SQL DB →
+                      <span>Requête SQL DB →</span>
                     </button>
                   </div>
                 </div>
@@ -762,7 +837,9 @@ ORDER BY T0."ItemCode" ASC`;
             {entities.map((ent) => {
               const config = ent.sapConfig;
               const isConnected = config.status === 'CONNECTED';
-              const isTesting = testingSapEntityId === ent.id;
+              const isQueryTesting = testingSapEntityId === ent.id;
+              const isConnTesting = testingConnectionEntityId === ent.id;
+              const connResult = connectionTestResultMap[ent.id];
               const showPwd = showPasswordMap[ent.id] || false;
               const testResult = testQueryResultMap[ent.id];
 
@@ -799,19 +876,57 @@ ORDER BY T0."ItemCode" ASC`;
                         <span>{isConnected ? `Connecté Direct (${config.dbEngine})` : 'Déconnecté / Erreur DB'}</span>
                       </span>
 
-                      {/* Execute & Test Query Button */}
+                      {/* Button 1: Test Communication DB */}
+                      <button
+                        type="button"
+                        onClick={() => handleTestDatabaseCommunication(ent.id)}
+                        disabled={isConnTesting}
+                        className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition min-h-[36px]"
+                        title="Tester la communication TCP/IP avec le serveur de base de données"
+                      >
+                        <Activity className={`w-3.5 h-3.5 ${isConnTesting ? 'animate-spin' : ''}`} />
+                        <span>{isConnTesting ? 'Communication...' : '1. Tester la communication DB'}</span>
+                      </button>
+
+                      {/* Button 2: Execute & Test Query Button */}
                       <button
                         type="button"
                         onClick={() => handleTestSapDirectQuery(ent.id)}
-                        disabled={isTesting}
+                        disabled={isQueryTesting}
                         className="bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-bold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition min-h-[36px]"
-                        title="Tester la connexion directe TCP et exécuter la requête manuelle"
+                        title="Tester la requête SELECT manuelle"
                       >
-                        <Play className={`w-3.5 h-3.5 fill-current ${isTesting ? 'animate-spin' : ''}`} />
-                        <span>{isTesting ? 'Exécution SQL...' : 'Tester & Exécuter la Requête'}</span>
+                        <Play className={`w-3.5 h-3.5 fill-current ${isQueryTesting ? 'animate-spin' : ''}`} />
+                        <span>{isQueryTesting ? 'Exécution SQL...' : '2. Tester la Requête SELECT'}</span>
                       </button>
                     </div>
                   </div>
+
+                  {/* Communication test result banner */}
+                  {connResult && (
+                    <div className="p-3 bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-xl text-xs space-y-1 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                            Communication SGBD Établie avec Succès
+                          </span>
+                          <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-emerald-200/60 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-bold">
+                            {connResult.latency} ms
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                          {connResult.testedAt}
+                        </span>
+                      </div>
+                      <div className="text-[11.5px] text-emerald-800 dark:text-emerald-300 font-mono">
+                        {connResult.details}
+                      </div>
+                      <div className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                        Version moteur détectée : <strong>{connResult.serverVersion}</strong>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Direct DB Parameters Grid */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 text-xs">
@@ -1378,6 +1493,419 @@ ORDER BY T0."ItemCode" ASC`;
           </div>
         </div>
       )}
+
+      {/* MODAL 4: ENTITY SQL DB SETTINGS & TESTS POPUP */}
+      {selectedEntityForSqlModal && (() => {
+        const ent = entities.find((e) => e.id === selectedEntityForSqlModal.id) || selectedEntityForSqlModal;
+        const config = ent.sapConfig;
+        const isConnected = config.status === 'CONNECTED';
+        const isQueryTesting = testingSapEntityId === ent.id;
+        const isConnTesting = testingConnectionEntityId === ent.id;
+        const connResult = connectionTestResultMap[ent.id];
+        const queryResult = testQueryResultMap[ent.id];
+        const showPwd = showPasswordMap[ent.id] || false;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs">
+            <div className="w-full max-w-4xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden max-h-[92vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              
+              {/* Modal Header */}
+              <div className="p-4 sm:p-5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-600/20 border border-red-500/40 text-red-500 flex items-center justify-center">
+                    <Database className="w-5 h-5 text-red-500" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-extrabold text-base sm:text-lg text-white">
+                        Paramètres & Requête SQL DB — {ent.name}
+                      </h3>
+                      <span className="font-mono text-xs font-bold text-red-400 bg-red-950/80 px-2 py-0.5 rounded border border-red-800/80">
+                        {ent.code}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {ent.address} • {ent.city} — Configuration connexion SGBD et extraction temps réel
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`hidden sm:flex text-xs font-black uppercase px-2.5 py-1 rounded-full border items-center gap-1.5 ${
+                      isConnected
+                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+                        : 'bg-rose-950/80 text-rose-300 border-rose-800'
+                    }`}
+                  >
+                    <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
+                    <span>{isConnected ? `Connecté (${config.dbEngine})` : 'Déconnecté'}</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEntityForSqlModal(null)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+                    title="Fermer la fenêtre"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Scrollable Content */}
+              <div className="p-4 sm:p-6 space-y-6 overflow-y-auto flex-1 text-xs">
+                
+                {/* 1. Entity Database Connection Settings */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                      <Server className="w-4 h-4 text-red-600 dark:text-red-400" />
+                      <span>Paramètres de la Base de Données SAP</span>
+                    </h4>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                      TCP/IP Direct Socket
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+                    {/* SGBD Engine */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Moteur SGBD SAP
+                      </label>
+                      <select
+                        value={config.dbEngine}
+                        onChange={(e) => handleUpdateSapConfig(ent.id, 'dbEngine', e.target.value as SapDbEngine)}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                      >
+                        <option value="MSSQL">Microsoft SQL Server (Standard B1)</option>
+                        <option value="HANA">SAP HANA Database</option>
+                        <option value="POSTGRES">PostgreSQL</option>
+                      </select>
+                    </div>
+
+                    {/* Server Host / IP */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Hôte / Adresse IP Serveur DB
+                      </label>
+                      <input
+                        type="text"
+                        value={config.serverHost}
+                        onChange={(e) => handleUpdateSapConfig(ent.id, 'serverHost', e.target.value)}
+                        placeholder="192.168.10.50"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                      />
+                    </div>
+
+                    {/* Port */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Port TCP (ex: 1433 MSSQL, 30015 HANA)
+                      </label>
+                      <input
+                        type="number"
+                        value={config.port}
+                        onChange={(e) => handleUpdateSapConfig(ent.id, 'port', Number(e.target.value))}
+                        placeholder="1433"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                      />
+                    </div>
+
+                    {/* Database Name */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Nom Base de Données (Company DB)
+                      </label>
+                      <input
+                        type="text"
+                        value={config.databaseName}
+                        onChange={(e) => handleUpdateSapConfig(ent.id, 'databaseName', e.target.value)}
+                        placeholder="ALF_MAGHRIB_PRD"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono font-bold text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                      />
+                    </div>
+
+                    {/* DB Username */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Utilisateur Base de Données (DB User)
+                      </label>
+                      <input
+                        type="text"
+                        value={config.username}
+                        onChange={(e) => handleUpdateSapConfig(ent.id, 'username', e.target.value)}
+                        placeholder="sa_sapb1_read"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                      />
+                    </div>
+
+                    {/* DB Password */}
+                    <div>
+                      <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Mot de passe DB
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showPwd ? 'text' : 'password'}
+                          value={config.password || ''}
+                          onChange={(e) => handleUpdateSapConfig(ent.id, 'password', e.target.value)}
+                          placeholder="••••••••••••"
+                          className="w-full pl-3 pr-10 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-slate-800 dark:text-slate-200 focus:border-red-600 outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setShowPasswordMap((prev) => ({ ...prev, [ent.id]: !prev[ent.id] }))
+                          }
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                        >
+                          {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* SSL / Encrypted */}
+                    <div className="flex items-center gap-2 pt-2 sm:col-span-2">
+                      <label className="flex items-center gap-2 cursor-pointer select-none font-bold text-slate-700 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={config.ssl !== false}
+                          onChange={(e) => handleUpdateSapConfig(ent.id, 'ssl', e.target.checked)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500"
+                        />
+                        <span>Chiffrement SSL / TLS requis pour la connexion directe</span>
+                      </label>
+                    </div>
+
+                    {/* Query Timeout */}
+                    <div className="flex items-center gap-2 pt-2 text-slate-600 dark:text-slate-300">
+                      <span>Timeout d'exécution :</span>
+                      <strong className="font-mono">{config.queryTimeoutSec || 30} secondes</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. BUTTON 1: Test Communication with the DATABASE FIRST */}
+                <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black text-xs">
+                          1
+                        </span>
+                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                          Test de Communication avec la Base de Données
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-8">
+                        Vérifie la disponibilité du socket TCP/IP ({config.serverHost}:{config.port}) et valide les identifiants sans charger de données.
+                      </p>
+                    </div>
+
+                    {/* Button to test the communication with the DATABASE first */}
+                    <button
+                      type="button"
+                      id="btn-test-db-communication"
+                      onClick={() => handleTestDatabaseCommunication(ent.id)}
+                      disabled={isConnTesting}
+                      className="bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition min-h-[40px] shrink-0 cursor-pointer active:scale-95"
+                    >
+                      <Activity className={`w-4 h-4 ${isConnTesting ? 'animate-spin' : ''}`} />
+                      <span>{isConnTesting ? 'Test de communication en cours...' : 'Tester la communication avec la Base de Données'}</span>
+                    </button>
+                  </div>
+
+                  {/* Communication Result Box */}
+                  {connResult && (
+                    <div className="mt-3 p-3.5 bg-emerald-50/90 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 rounded-xl space-y-1.5 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                          <span className="font-bold text-emerald-900 dark:text-emerald-200 text-xs">
+                            Communication SGBD Établie avec Succès
+                          </span>
+                          <span className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-emerald-200/60 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                            Latence : {connResult.latency} ms
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono">
+                          {connResult.testedAt}
+                        </span>
+                      </div>
+                      <div className="text-[11.5px] text-emerald-800 dark:text-emerald-300 font-mono">
+                        {connResult.details}
+                      </div>
+                      <div className="text-[11px] text-emerald-700/80 dark:text-emerald-400/80">
+                        Version moteur détectée : <strong>{connResult.serverVersion}</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. BUTTON 2: Test the SELECT Query */}
+                <div className="bg-slate-50 dark:bg-slate-800/40 rounded-xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/60 text-red-600 dark:text-red-400 flex items-center justify-center font-black text-xs">
+                          2
+                        </span>
+                        <h4 className="font-bold text-sm text-slate-900 dark:text-white">
+                          Requête SQL Manuelle d'Extraction & Test SELECT
+                        </h4>
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 ml-8">
+                        Exécute la requête SQL SELECT d'extraction des articles et stocks pour vérifier le schéma et les données retournées.
+                      </p>
+                    </div>
+
+                    {/* Presets */}
+                    <div className="flex items-center gap-1.5 text-[11px] ml-8 sm:ml-0 flex-wrap">
+                      <span className="text-slate-400">Modèles :</span>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadQueryPreset(ent.id, 'STANDARD')}
+                        className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 hover:bg-red-50 hover:text-red-700 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      >
+                        Standard OITM
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadQueryPreset(ent.id, 'CRITICAL')}
+                        className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 hover:bg-red-50 hover:text-red-700 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      >
+                        Pièces Critiques
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleLoadQueryPreset(ent.id, 'HANA')}
+                        className="px-2 py-0.5 rounded bg-white dark:bg-slate-800 hover:bg-red-50 hover:text-red-700 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold border border-slate-200 dark:border-slate-700 cursor-pointer"
+                      >
+                        Format HANA
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SQL Editor Textarea */}
+                  <div className="relative rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 bg-slate-950 shadow-inner">
+                    <div className="bg-slate-900 px-3 py-1.5 border-b border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+                      <span className="font-mono flex items-center gap-1">
+                        <FileCode className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>custom_query_{ent.code.toLowerCase()}.sql</span>
+                      </span>
+                      <span>SELECT Query ({config.dbEngine})</span>
+                    </div>
+                    <textarea
+                      rows={6}
+                      value={config.sqlQuery || DEFAULT_SAP_SQL_QUERY}
+                      onChange={(e) => handleUpdateSapConfig(ent.id, 'sqlQuery', e.target.value)}
+                      placeholder="SELECT T0.ItemCode, T0.ItemName, T1.OnHand FROM OITM T0 INNER JOIN OITW T1..."
+                      className="w-full p-3 font-mono text-xs text-emerald-300 bg-slate-950 focus:outline-none resize-y leading-relaxed"
+                      spellCheck={false}
+                    />
+                  </div>
+
+                  {/* Button to test the SELECT query */}
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      id="btn-test-select-query"
+                      onClick={() => handleTestSapDirectQuery(ent.id)}
+                      disabled={isQueryTesting}
+                      className="bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-50 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition min-h-[40px] cursor-pointer active:scale-95"
+                    >
+                      <Play className={`w-3.5 h-3.5 fill-current ${isQueryTesting ? 'animate-spin' : ''}`} />
+                      <span>{isQueryTesting ? 'Exécution de la requête SELECT...' : 'Tester la Requête SELECT'}</span>
+                    </button>
+                  </div>
+
+                  {/* Query Execution Result & Preview Table */}
+                  {queryResult && (
+                    <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-emerald-200 dark:border-emerald-900/60 shadow-xs space-y-3 mt-3 animate-in fade-in duration-200">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                            Résultat de la Requête SELECT
+                          </span>
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-semibold">
+                            {queryResult.rowsCount} lignes retournées en {queryResult.latency} ms
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          Exécuté le {queryResult.executedAt}
+                        </span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold">
+                            <tr>
+                              <th className="py-2 px-3">codeArticle</th>
+                              <th className="py-2 px-3">nomArticle</th>
+                              <th className="py-2 px-3 text-right">qteSap</th>
+                              <th className="py-2 px-3">emplacement</th>
+                              <th className="py-2 px-3">unite</th>
+                              <th className="py-2 px-3">categorie</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono text-[11.5px]">
+                            {queryResult.sampleRows.map((row) => (
+                              <tr key={row.codeArticle} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
+                                <td className="py-1.5 px-3 font-bold text-red-600 dark:text-red-400">{row.codeArticle}</td>
+                                <td className="py-1.5 px-3 font-sans text-slate-800 dark:text-slate-200">{row.nomArticle}</td>
+                                <td className="py-1.5 px-3 text-right font-black text-slate-900 dark:text-white">{row.qteSap}</td>
+                                <td className="py-1.5 px-3 text-slate-500">{row.emplacement}</td>
+                                <td className="py-1.5 px-3 text-slate-500">{row.unite}</td>
+                                <td className="py-1.5 px-3 text-slate-600 dark:text-slate-400 font-sans">{row.categorie}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="text-[10.5px] text-slate-500 dark:text-slate-400 italic">
+                        * Aperçu des 5 premières lignes retournées directement depuis le socket DB SAP.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Modal Footer */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  Dernier test SQL : <strong>{config.lastTested || 'Jamais'}</strong>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast(`Configuration DB pour ${ent.name} enregistrée avec succès.`, 'success');
+                      setSelectedEntityForSqlModal(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Enregistrer la Configuration</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedEntityForSqlModal(null)}
+                    className="px-4 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

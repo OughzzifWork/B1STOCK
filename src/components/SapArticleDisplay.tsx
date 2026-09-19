@@ -50,9 +50,9 @@ export const SapArticleDisplay: React.FC<SapArticleDisplayProps> = ({ article })
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {/* Field 1: Code Article SAP */}
           <div className="sm:col-span-2">
-            <label className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-              <span className="flex items-center gap-1.5">
-                <Lock className="w-3 h-3 text-slate-400" />
+            <label className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 h-5">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
+                <Lock className="w-3 h-3 text-slate-400 shrink-0" />
                 Code Article SAP
               </span>
               <span className="text-[10px] text-slate-400 font-normal uppercase">Lecture seule</span>
@@ -64,18 +64,18 @@ export const SapArticleDisplay: React.FC<SapArticleDisplayProps> = ({ article })
               disabled
               readOnly
               tabIndex={-1}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-base pointer-events-none select-none cursor-not-allowed shadow-inner"
+              className="w-full px-3 py-2.5 h-[42px] rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-base pointer-events-none select-none cursor-not-allowed shadow-inner"
             />
           </div>
 
           {/* Field 4: Qte SAP */}
-          <div>
-            <label className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-              <span className="flex items-center gap-1.5">
-                <Lock className="w-3 h-3 text-slate-400" />
-                Qté SAP (Théorique)
+          <div className="sm:col-span-1">
+            <label className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400 mb-1 h-5">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
+                <Lock className="w-3 h-3 text-slate-400 shrink-0" />
+                Qté SAP
               </span>
-              <span className="text-[10px] text-slate-400 font-normal">Figer</span>
+              <span className="text-[10px] text-slate-400 font-normal uppercase">Stock</span>
             </label>
             <input
               type="text"
@@ -84,7 +84,7 @@ export const SapArticleDisplay: React.FC<SapArticleDisplayProps> = ({ article })
               disabled
               readOnly
               tabIndex={-1}
-              className="w-full px-3 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-xl text-center pointer-events-none select-none cursor-not-allowed shadow-inner"
+              className="w-full px-3 py-2.5 h-[42px] rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-mono font-black text-base text-center pointer-events-none select-none cursor-not-allowed shadow-inner"
             />
           </div>
         </div>

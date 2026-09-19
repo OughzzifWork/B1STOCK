@@ -4,11 +4,11 @@ import {
   LayoutDashboard, 
   ScanLine, 
   Database, 
+  History,
   Settings, 
   User, 
   LogOut, 
-  Lock, 
-  X 
+  X
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -17,11 +17,11 @@ interface SidebarProps {
   currentUser: AppUser;
   currentEntity?: WarehouseEntity;
   inventoryCount: number;
+  closedInventoryCount?: number;
   onLogout: () => void;
   isMobileOpen: boolean;
   onCloseMobile: () => void;
   isCollapsed?: boolean;
-  onToggleCollapse?: () => void;
   isDarkMode?: boolean;
   onToggleDarkMode?: () => void;
 }
@@ -31,9 +31,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSelectTab,
   currentUser,
   inventoryCount,
+  closedInventoryCount,
   onLogout,
   isMobileOpen,
   onCloseMobile,
+  isCollapsed = false,
 }) => {
   const isSuperAdmin = currentUser.role === 'SuperAdmin';
 
@@ -65,12 +67,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       description: 'Catalogue des pièces SAP ERP',
     },
     {
-      id: 'parametres',
+      id: 'history',
+      label: 'Inventory History',
+      icon: History,
+      badge: closedInventoryCount && closedInventoryCount > 0 ? closedInventoryCount : undefined,
+      description: 'Archives des inventaires passés clôturés',
+    },
+    ...(isSuperAdmin ? [{
+      id: 'parametres' as NavigationTab,
       label: 'Paramètres',
       icon: Settings,
       superAdminOnly: true,
       description: 'Users, Entités & Direct DB SAP',
-    },
+    }] : []),
     {
       id: 'profil',
       label: 'Mon Profil',
@@ -93,58 +102,87 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <aside
         className={`fixed top-0 bottom-0 left-0 z-40 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 flex flex-col border-r border-slate-200 dark:border-slate-800 transition-all duration-300 ease-in-out lg:translate-x-0 ${
           isMobileOpen ? 'translate-x-0' : '-translate-x-full'
-        } w-64 sm:w-72`}
+        } ${isCollapsed ? 'lg:w-20 w-64 sm:w-72' : 'w-64 sm:w-72'}`}
       >
-        {/* Brand Header: Just B1STOCK, no Alf Al Maghrib logo */}
-        <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between min-h-[68px]">
-          <div className="flex items-center gap-2">
-            <span className="font-black text-2xl tracking-wider text-slate-900 dark:text-white">
-              B1<span className="text-red-600">STOCK</span>
-            </span>
-          </div>
+        {/* Brand Header: Exact same height (h-[68px]) and border-b as Header */}
+        <div className="h-[68px] px-3 sm:px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
+          {isCollapsed ? (
+            <div className="w-full flex items-center justify-center">
+              <span className="font-black text-xl tracking-tight text-slate-900 dark:text-white">
+                B1<span className="text-red-600">S</span>
+              </span>
+            </div>
+          ) : (
+            <div className="w-full flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="font-black text-2xl tracking-wider text-slate-900 dark:text-white">
+                  B1<span className="text-red-600">STOCK</span>
+                </span>
+              </div>
 
-          {/* Close button on mobile */}
-          <button
-            type="button"
-            onClick={onCloseMobile}
-            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
-            aria-label="Fermer le menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
+              {/* Close button on mobile */}
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800"
+                aria-label="Fermer le menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Navigation Tabs */}
-        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto overflow-x-hidden">
-          <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 px-3 py-1">
-            Menu Principal
-          </div>
+        <nav className={`flex-1 ${isCollapsed ? 'p-2' : 'p-3'} space-y-1.5 overflow-y-auto overflow-x-hidden`}>
+          {!isCollapsed && (
+            <div className="text-[10px] uppercase tracking-wider font-bold text-slate-400 dark:text-slate-500 px-3 py-1">
+              Menu Principal
+            </div>
+          )}
 
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
-            const isLocked = item.superAdminOnly && !isSuperAdmin;
 
-            if (isLocked) {
+            if (item.superAdminOnly && !isSuperAdmin) {
+              return null;
+            }
+
+            if (isCollapsed) {
               return (
-                <div
+                <button
                   key={item.id}
-                  className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-900/40 border border-slate-100 dark:border-slate-800/40 opacity-60 cursor-not-allowed select-none min-h-[46px]"
+                  type="button"
+                  id={`sidebar-tab-${item.id}`}
+                  onClick={() => {
+                    onSelectTab(item.id);
+                    onCloseMobile();
+                  }}
+                  title={`${item.label} - ${item.description}`}
+                  className={`w-full flex items-center justify-center p-3 rounded-xl transition-all relative min-h-[46px] group ${
+                    isActive
+                      ? 'bg-red-600 text-white shadow-md shadow-red-600/25'
+                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
+                  }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className="w-5 h-5 text-slate-400 dark:text-slate-600 shrink-0" />
-                    <div className="text-left">
-                      <div className="text-xs font-bold text-slate-500 flex items-center gap-1">
-                        <span>{item.label}</span>
-                        <Lock className="w-3 h-3 text-slate-400" />
-                      </div>
-                      <div className="text-[10px] text-slate-400">SuperAdmin requis</div>
-                    </div>
-                  </div>
-                  <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-500">
-                    Verrouillé
-                  </span>
-                </div>
+                  <Icon
+                    className={`w-5 h-5 shrink-0 ${
+                      isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-red-600'
+                    }`}
+                  />
+                  {item.badge !== undefined && (
+                    <span
+                      className={`absolute top-1 right-1 px-1 py-0.2 rounded-full text-[9px] font-black min-w-[16px] text-center ${
+                        isActive
+                          ? 'bg-white text-red-600'
+                          : 'bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
               );
             }
 
@@ -211,16 +249,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
 
         {/* Sidebar Footer: KEEP JUST LOGOUT BUTTON */}
-        <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60">
-          <button
-            type="button"
-            id="btn-sidebar-logout"
-            onClick={onLogout}
-            className="w-full py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-900/60 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-700 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-bold transition flex items-center justify-center gap-2 min-h-[42px] shadow-xs cursor-pointer"
-          >
-            <LogOut className="w-4 h-4 text-rose-500" />
-            <span>Déconnexion</span>
-          </button>
+        <div className={`border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/60 ${isCollapsed ? 'p-2' : 'p-3'}`}>
+          {isCollapsed ? (
+            <button
+              type="button"
+              id="btn-sidebar-logout-collapsed"
+              onClick={onLogout}
+              className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-900/60 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-700 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-400 transition flex items-center justify-center min-h-[42px] shadow-xs cursor-pointer"
+              title="Déconnexion"
+              aria-label="Déconnexion"
+            >
+              <LogOut className="w-5 h-5 text-rose-500" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              id="btn-sidebar-logout"
+              onClick={onLogout}
+              className="w-full py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-rose-300 dark:hover:border-rose-900/60 bg-white dark:bg-slate-900 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-700 dark:text-slate-200 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-bold transition flex items-center justify-center gap-2 min-h-[42px] shadow-xs cursor-pointer"
+            >
+              <LogOut className="w-4 h-4 text-rose-500" />
+              <span>Déconnexion</span>
+            </button>
+          )}
         </div>
       </aside>
     </>

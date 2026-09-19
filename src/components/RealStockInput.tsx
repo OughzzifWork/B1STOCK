@@ -1,5 +1,5 @@
 import React from 'react';
-import { SAPArticle, DiscrepancyStatus } from '../types';
+import { SAPArticle, DiscrepancyStatus, InventoryRecord } from '../types';
 import { 
   CheckCircle2, 
   ArrowUpRight, 
@@ -8,7 +8,9 @@ import {
   Minus, 
   Save, 
   RotateCcw,
-  Equal
+  Equal,
+  AlertTriangle,
+  RotateCw
 } from 'lucide-react';
 
 interface RealStockInputProps {
@@ -19,6 +21,8 @@ interface RealStockInputProps {
   inputRef: React.RefObject<HTMLInputElement | null>;
   notes: string;
   onChangeNotes: (val: string) => void;
+  isAlreadyCounted?: boolean;
+  previousRecord?: InventoryRecord | null;
 }
 
 export const RealStockInput: React.FC<RealStockInputProps> = ({
@@ -29,6 +33,8 @@ export const RealStockInput: React.FC<RealStockInputProps> = ({
   inputRef,
   notes,
   onChangeNotes,
+  isAlreadyCounted = false,
+  previousRecord = null,
 }) => {
   // Numeric parse
   const parsedCount = realCount.trim() === '' ? null : Number(realCount);
@@ -80,9 +86,32 @@ export const RealStockInput: React.FC<RealStockInputProps> = ({
           <span>Quantité Réelle Comptée (Physique)</span>
         </label>
         <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-          Saisie active opérateur
+          {isAlreadyCounted ? 'Mise à jour de saisie' : 'Saisie active opérateur'}
         </span>
       </div>
+
+      {/* Non-blocking Duplicate Warning Banner */}
+      {isAlreadyCounted && previousRecord && (
+        <div 
+          id="duplicate-warning-banner"
+          className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700/70 rounded-xl p-3 flex items-start gap-2.5 text-amber-900 dark:text-amber-200 animate-in fade-in duration-200 shadow-2xs"
+        >
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <div className="font-extrabold flex flex-wrap items-center gap-1.5">
+              <span>Article déjà compté dans cet inventaire</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-200 dark:bg-amber-900/70 font-mono font-bold text-amber-900 dark:text-amber-200">
+                1 SEUL ENREGISTREMENT
+              </span>
+            </div>
+            <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+              Précédemment enregistré : <strong className="font-mono">{previousRecord.qteReelle} {article.unite || 'pièces'}</strong> (Écart : <span className="font-mono font-bold">{previousRecord.ecart > 0 ? `+${previousRecord.ecart}` : previousRecord.ecart}</span>) le {previousRecord.formattedDate}.
+              <br />
+              Vous pouvez ajuster la quantité ci-dessous : la validation mettra à jour l'enregistrement existant.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Primary Input & Steppers */}
       <div className="space-y-2">
@@ -231,15 +260,28 @@ export const RealStockInput: React.FC<RealStockInputProps> = ({
         />
       </div>
 
-      {/* Validation & Local Storage: Large, thumb-friendly "Valider l'écriture" button */}
+      {/* Validation & Local Storage: Large, thumb-friendly "Valider l'écriture" or "Mettre à jour" button */}
       <button
         type="button"
         id="btn-validate-inventory"
         onClick={onValidate}
-        className="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-black text-base sm:text-lg py-4 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2.5 min-h-[56px] focus:outline-none focus:ring-4 focus:ring-emerald-400 active:scale-[0.98]"
+        className={`w-full text-white font-black text-base sm:text-lg py-4 px-6 rounded-xl shadow-md transition flex items-center justify-center gap-2.5 min-h-[56px] focus:outline-none focus:ring-4 active:scale-[0.98] cursor-pointer ${
+          isAlreadyCounted
+            ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800 focus:ring-amber-400'
+            : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 focus:ring-emerald-400'
+        }`}
       >
-        <Save className="w-6 h-6 stroke-[2.5]" />
-        <span>Valider l'écriture d'inventaire</span>
+        {isAlreadyCounted ? (
+          <>
+            <RotateCw className="w-6 h-6 stroke-[2.5]" />
+            <span>Mettre à jour la Quantité Réelle</span>
+          </>
+        ) : (
+          <>
+            <Save className="w-6 h-6 stroke-[2.5]" />
+            <span>Valider l'écriture d'inventaire</span>
+          </>
+        )}
       </button>
     </section>
   );

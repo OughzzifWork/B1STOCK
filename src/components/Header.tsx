@@ -6,7 +6,9 @@ import {
   VolumeX, 
   ClipboardList, 
   Sun, 
-  Moon 
+  Moon,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -35,11 +37,14 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHistory,
   isDarkMode,
   onToggleDarkMode,
+  isSidebarCollapsed = false,
+  onToggleSidebarCollapse,
 }) => {
   const tabTitles: Record<NavigationTab, string> = {
     dashboard: 'Dashboard',
     inventaire: 'Inventaire PDA',
     articles: 'DB Articles SAP',
+    history: 'Inventory History',
     parametres: 'Paramètres SuperAdmin',
     profil: 'Mon Profil',
   };
@@ -47,11 +52,11 @@ export const Header: React.FC<HeaderProps> = ({
   const isConnected = currentEntity ? currentEntity.sapConfig.status === 'CONNECTED' : true;
 
   return (
-    <header className="sticky top-0 z-30 bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border-b border-slate-200 dark:border-slate-800 transition-colors">
-      <div className="max-w-7xl mx-auto px-3 py-2 sm:px-4 sm:py-2.5">
+    <header className="sticky top-0 z-30 h-[68px] bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border-b border-slate-200 dark:border-slate-800 transition-colors flex items-center shrink-0">
+      <div className="w-full max-w-7xl mx-auto px-3 sm:px-4">
         <div className="flex items-center justify-between gap-2">
           
-          {/* Left: Mobile Hamburger & Brand / Active Tab */}
+          {/* Left: Mobile Hamburger, Desktop Toggle & Brand / Active Tab */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             {/* Mobile Hamburger */}
             <button
@@ -63,6 +68,24 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Menu className="w-5 h-5" />
             </button>
+
+            {/* Desktop Sidebar Minimize / Expand Button */}
+            {onToggleSidebarCollapse && (
+              <button
+                type="button"
+                id="btn-sidebar-collapse-desktop-header"
+                onClick={onToggleSidebarCollapse}
+                className="hidden lg:flex p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-red-600 dark:hover:text-red-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition min-w-[40px] min-h-[40px] items-center justify-center border border-slate-200 dark:border-slate-700 cursor-pointer"
+                aria-label={isSidebarCollapsed ? "Agrandir la barre latérale" : "Réduire la barre latérale"}
+                title={isSidebarCollapsed ? "Agrandir la barre latérale" : "Réduire la barre latérale"}
+              >
+                {isSidebarCollapsed ? (
+                  <PanelLeftOpen className="w-5 h-5" />
+                ) : (
+                  <PanelLeftClose className="w-5 h-5" />
+                )}
+              </button>
+            )}
 
             <div className="flex items-center gap-2 min-w-0">
               <div className="min-w-0">

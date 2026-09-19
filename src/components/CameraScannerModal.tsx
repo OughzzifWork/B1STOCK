@@ -6,12 +6,16 @@ interface CameraScannerModalProps {
   isOpen: boolean;
   onClose: () => void;
   onScanDetected: (code: string) => void;
+  title?: string;
+  subtitle?: string;
 }
 
 export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
   isOpen,
   onClose,
   onScanDetected,
+  title,
+  subtitle,
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -135,8 +139,17 @@ export const CameraScannerModal: React.FC<CameraScannerModalProps> = ({
         {/* Header */}
         <div className="p-3.5 bg-slate-800 flex items-center justify-between border-b border-slate-700">
           <div className="flex items-center gap-2">
-            <Camera className="w-5 h-5 text-red-500" />
-            <h3 className="font-bold text-sm sm:text-base">Scanner Caméra PDA</h3>
+            <Camera className="w-5 h-5 text-red-500 shrink-0" />
+            <div>
+              <h3 className="font-bold text-sm sm:text-base leading-tight">
+                {title || 'Scanner Caméra PDA'}
+              </h3>
+              {subtitle && (
+                <p className="text-[11px] text-slate-400 leading-tight mt-0.5">
+                  {subtitle}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {hasTorch && (

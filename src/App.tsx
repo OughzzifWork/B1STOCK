@@ -4,9 +4,10 @@ import {
   InventoryRecord, 
   AppUser, 
   NavigationTab, 
-  WarehouseEntity 
+  WarehouseEntity,
+  ClosedInventory 
 } from './types';
-import { INITIAL_USERS, INITIAL_ENTITIES } from './data/mockSystemData';
+import { INITIAL_USERS, INITIAL_ENTITIES, INITIAL_CLOSED_INVENTORIES } from './data/mockSystemData';
 import { findSapArticle } from './data/mockSapDatabase';
 import { LoginPage } from './components/LoginPage';
 import { Sidebar } from './components/Sidebar';
@@ -14,6 +15,7 @@ import { Header } from './components/Header';
 import { DashboardView } from './components/DashboardView';
 import { InventoryView } from './components/InventoryView';
 import { SapArticlesView } from './components/SapArticlesView';
+import { InventoryHistoryView } from './components/InventoryHistoryView';
 import { SettingsView } from './components/SettingsView';
 import { ProfileView } from './components/ProfileView';
 import { MobileBottomNav } from './components/MobileBottomNav';
@@ -25,6 +27,7 @@ const STORAGE_KEY_AUTH_USER = 'b1stock_auth_user_v2';
 const STORAGE_KEY_USERS = 'b1stock_users_list_v2';
 const STORAGE_KEY_ENTITIES = 'b1stock_entities_list_v2';
 const STORAGE_KEY_RECORDS = 'b1stock_inventory_records_v2';
+const STORAGE_KEY_CLOSED_INVENTORIES = 'b1stock_closed_inventories_v2';
 const STORAGE_KEY_DARK_MODE = 'b1stock_dark_mode_v2';
 const STORAGE_KEY_SIDEBAR_COLLAPSED = 'b1stock_sidebar_collapsed_v2';
 
@@ -174,6 +177,17 @@ export default function App() {
     ];
   });
 
+  // Closed inventories history state
+  const [closedInventories, setClosedInventories] = useState<ClosedInventory[]>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_CLOSED_INVENTORIES);
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return INITIAL_CLOSED_INVENTORIES;
+  });
+
   // Active item & scanner state for Inventory
   const [scanInput, setScanInput] = useState('');
   const [activeArticle, setActiveArticle] = useState<SAPArticle | null>(null);
@@ -218,6 +232,14 @@ export default function App() {
       // quota
     }
   }, [records]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY_CLOSED_INVENTORIES, JSON.stringify(closedInventories));
+    } catch {
+      // quota
+    }
+  }, [closedInventories]);
 
   useEffect(() => {
     try {
@@ -298,10 +320,22 @@ export default function App() {
 
       if (found) {
         setActiveArticle(found);
-        setRealCount('');
-        setNotes('');
         setSearchError(null);
         playSound('scan');
+
+        // Check for existing count (duplicate control)
+        const existing = records.find((r) => r.codeArticle === found.codeArticle);
+        if (existing) {
+          setRealCount(String(existing.qteReelle));
+          setNotes(existing.notes || '');
+          showToast(
+            `Article déjà compté : ${found.codeArticle} (${existing.qteReelle} ${found.unite || 'pièces'}). Vous pouvez ajuster la quantité réelle.`,
+            'warning'
+          );
+        } else {
+          setRealCount('');
+          setNotes('');
+        }
 
         setTimeout(() => {
           realStockInputRef.current?.focus();
@@ -329,9 +363,20 @@ export default function App() {
     }, 100);
   };
 
-  // Add Inventory Record
+  // Upsert Inventory Record: strictly ONE record per article
   const handleAddRecord = (record: InventoryRecord) => {
-    setRecords((prev) => [record, ...prev]);
+    setRecords((prev) => {
+      const idx = prev.findIndex((r) => r.codeArticle === record.codeArticle);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          ...record,
+        };
+        return updated;
+      }
+      return [record, ...prev];
+    });
   };
 
   const handleDeleteRecord = (id: string) => {
@@ -342,6 +387,60 @@ export default function App() {
   const handleClearAllRecords = () => {
     setRecords([]);
     showToast("Historique d'inventaire purgé.", 'info');
+  };
+
+  // Close and archive the active inventory session to Inventory History
+  const handleCloseInventory = (closingNotes?: string) => {
+    if (records.length === 0) {
+      showToast("Aucune écriture d'inventaire à clôturer.", 'warning');
+      return;
+    }
+
+    const now = new Date();
+    const nextNum = closedInventories.length + 1;
+    const refNumber = `INV-${now.getFullYear()}-${String(nextNum).padStart(3, '0')}`;
+
+    const newClosedInv: ClosedInventory = {
+      id: `closed-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      reference: refNumber,
+      closedAt: now.toISOString(),
+      formattedDate: now.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+      closedBy: currentUser?.name || 'Opérateur',
+      closedByRole: currentUser?.role || 'Opérateur',
+      entityId: currentEntity?.id || 'ENT-01',
+      entityName: currentEntity?.name || 'Magasin Central',
+      totalItems: records.length,
+      totalConforme: records.filter((r) => r.status === 'CONFORME').length,
+      totalManquant: records.filter((r) => r.status === 'MANQUANT').length,
+      totalSurplus: records.filter((r) => r.status === 'SURPLUS').length,
+      totalEcart: records.reduce((acc, r) => acc + r.ecart, 0),
+      notes: closingNotes?.trim() || undefined,
+      records: [...records],
+    };
+
+    const archivedCount = records.length;
+    setClosedInventories((prev) => [newClosedInv, ...prev]);
+    // Reset the active inventory
+    setRecords([]);
+    setActiveArticle(null);
+    setScanInput('');
+    setRealCount('');
+    setNotes('');
+
+    playSound('success');
+    showToast(`Inventaire ${refNumber} clôturé avec succès (${archivedCount} pièces sauvegardées dans l'historique).`, 'success');
+    setCurrentTab('history');
+  };
+
+  const handleDeleteClosedInventory = (id: string) => {
+    setClosedInventories((prev) => prev.filter((inv) => inv.id !== id));
+    showToast("Session d'inventaire supprimée de l'historique.", 'info');
   };
 
   // If not logged in, render Login Page
@@ -362,14 +461,18 @@ export default function App() {
         currentUser={currentUser}
         currentEntity={currentEntity}
         inventoryCount={records.length}
+        closedInventoryCount={closedInventories.length}
         onLogout={handleLogout}
         isMobileOpen={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
+        isCollapsed={isSidebarCollapsed}
       />
 
       {/* Main Layout Area */}
       <div 
-        className="flex-1 flex flex-col min-w-0 transition-all duration-300 lg:pl-64 sm:lg:pl-72"
+        className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ease-in-out ${
+          isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64 sm:lg:pl-72'
+        }`}
       >
         {/* Top Sticky Header */}
         <Header
@@ -383,6 +486,8 @@ export default function App() {
           onOpenHistory={() => setIsHistoryModalOpen(true)}
           isDarkMode={isDarkMode}
           onToggleDarkMode={handleToggleDarkMode}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebarCollapse={handleToggleSidebarCollapse}
         />
 
         {/* Global Toast Notification */}
@@ -450,12 +555,30 @@ export default function App() {
               scanInputRef={scanInputRef}
               realStockInputRef={realStockInputRef}
               showToast={showToast}
+              onCloseInventory={handleCloseInventory}
+              onGoToHistory={() => handleSelectTab('history')}
             />
           )}
 
           {currentTab === 'articles' && (
             <SapArticlesView
+              records={records}
+              onSaveRecord={handleAddRecord}
+              currentUser={currentUser}
+              currentEntity={currentEntity}
+              showToast={showToast}
               onSelectArticleForInventory={handleSelectArticleFromCatalog}
+            />
+          )}
+
+          {currentTab === 'history' && (
+            <InventoryHistoryView
+              closedInventories={closedInventories}
+              entities={entities}
+              currentUser={currentUser}
+              onDeleteClosedInventory={handleDeleteClosedInventory}
+              onGoToInventory={() => handleSelectTab('inventaire')}
+              showToast={showToast}
             />
           )}
 

@@ -24,7 +24,9 @@ import {
   CheckCircle2, 
   ArrowDownRight, 
   ArrowUpRight, 
-  AlertOctagon
+  AlertOctagon,
+  X,
+  History
 } from 'lucide-react';
 
 interface InventoryViewProps {
@@ -48,6 +50,8 @@ interface InventoryViewProps {
   scanInputRef: React.RefObject<HTMLInputElement | null>;
   realStockInputRef: React.RefObject<HTMLInputElement | null>;
   showToast: (text: string, type?: 'success' | 'warning' | 'info') => void;
+  onCloseInventory: (notes?: string) => void;
+  onGoToHistory?: () => void;
 }
 
 export const InventoryView: React.FC<InventoryViewProps> = ({
@@ -71,11 +75,15 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
   scanInputRef,
   realStockInputRef,
   showToast,
+  onCloseInventory,
+  onGoToHistory,
 }) => {
   const [isCameraScannerOpen, setIsCameraScannerOpen] = useState(false);
   const [tableSearch, setTableSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | DiscrepancyStatus>('ALL');
   const [viewMode, setViewMode] = useState<'both' | 'scanner' | 'table'>('both');
+  const [isCloseConfirmOpen, setIsCloseConfirmOpen] = useState(false);
+  const [closingNotes, setClosingNotes] = useState('');
 
   // Filtered records for data table
   const filteredRecords = useMemo(() => {
@@ -92,6 +100,12 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
       return matchesSearch && matchesStatus;
     });
   }, [records, tableSearch, statusFilter]);
+
+  // Check if current active article is already in records (single record per article control)
+  const existingRecord = useMemo(() => {
+    if (!activeArticle) return null;
+    return records.find((r) => r.codeArticle === activeArticle.codeArticle) || null;
+  }, [activeArticle, records]);
 
   // Validation logic
   const handleValidateWriting = () => {
@@ -117,8 +131,9 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     else if (ecart > 0) status = 'SURPLUS';
 
     const now = new Date();
+    const isUpdate = Boolean(existingRecord);
     const newRecord: InventoryRecord = {
-      id: `INV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
+      id: existingRecord ? existingRecord.id : `INV-${Date.now()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
       timestamp: now.toISOString(),
       formattedDate: now.toLocaleDateString('fr-FR', {
         day: '2-digit',
@@ -142,7 +157,13 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
 
     onAddRecord(newRecord);
 
-    if (ecart === 0) {
+    if (isUpdate) {
+      playSound('success');
+      showToast(
+        `Quantité mise à jour : ${activeArticle.codeArticle} (${countNumber} ${activeArticle.unite || 'pièces'}, Écart : ${ecart > 0 ? `+${ecart}` : ecart})`,
+        'success'
+      );
+    } else if (ecart === 0) {
       playSound('success');
       showToast(`Écriture validée : ${activeArticle.codeArticle} (Conforme, Écart: 0)`, 'success');
     } else {
@@ -211,11 +232,10 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           <button
             type="button"
             onClick={() => setViewMode('table')}
-            className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1 ${
+            className={`px-3 py-1.5 rounded-lg transition ${
               viewMode === 'table' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs' : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Table className="w-3.5 h-3.5 text-red-600" />
             <span>Table Articles Scannés ({records.length})</span>
           </button>
         </div>
@@ -252,6 +272,8 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                 inputRef={realStockInputRef}
                 notes={notes}
                 onChangeNotes={onChangeNotes}
+                isAlreadyCounted={Boolean(existingRecord)}
+                previousRecord={existingRecord}
               />
             )}
 
@@ -292,18 +314,40 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                   </div>
                 </div>
 
-                {/* Exporter en Excel button */}
-                <button
-                  type="button"
-                  id="btn-inventory-export-excel"
-                  onClick={() => exportInventoryToExcel(records)}
-                  disabled={records.length === 0}
-                  className="self-start sm:self-auto bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-40 disabled:pointer-events-none text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition min-h-[40px]"
-                  title="Générer un fichier Excel normalisé de toutes les saisies"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>Exporter en Excel (.xlsx)</span>
-                </button>
+                {/* Actions: Exporter en Excel & Clôturé Inventaire - ONLY shown in 'table' tab */}
+                {viewMode === 'table' && (
+                  <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                    <button
+                      type="button"
+                      id="btn-inventory-export-excel"
+                      onClick={() => exportInventoryToExcel(records)}
+                      disabled={records.length === 0}
+                      className="bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 disabled:opacity-40 disabled:pointer-events-none text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition min-h-[40px] cursor-pointer"
+                      title="Générer un fichier Excel normalisé de toutes les saisies"
+                    >
+                      <FileSpreadsheet className="w-4 h-4" />
+                      <span>Exporter en Excel (.xlsx)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      id="btn-cloturer-inventaire"
+                      onClick={() => {
+                        if (records.length === 0) {
+                          showToast("Aucune écriture d'inventaire en cours à clôturer.", 'warning');
+                          return;
+                        }
+                        setIsCloseConfirmOpen(true);
+                      }}
+                      disabled={records.length === 0}
+                      className="bg-red-600 hover:bg-red-700 active:bg-red-800 disabled:opacity-40 disabled:pointer-events-none text-white font-extrabold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition min-h-[40px] cursor-pointer"
+                      title="Clôturer l'inventaire actuel et sauvegarder dans Inventory History"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Clôturé Inventaire</span>
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Search bar & Status Filter buttons */}
@@ -497,6 +541,108 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
             onSearchSap(scannedCode);
           }}
         />
+      )}
+
+      {/* Confirmation Modal for Clôturé Inventaire */}
+      {isCloseConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {/* Header */}
+            <div className="p-4 sm:p-5 bg-red-600 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center font-bold">
+                  <CheckCircle2 className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base sm:text-lg">Clôturé Inventaire</h3>
+                  <p className="text-xs text-red-100">Archivage et finalisation de la session d'inventaire</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCloseConfirmOpen(false)}
+                className="p-1 rounded-lg text-white/80 hover:text-white hover:bg-white/10 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-4 sm:p-5 space-y-4 text-xs text-slate-700 dark:text-slate-300">
+              <p className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                Vous êtes sur le point de clôturer cet inventaire physique. Toutes les données seront sauvegardées et consultables dans la page <strong className="text-red-600 dark:text-red-400">Inventory History</strong>.
+              </p>
+
+              {/* Summary recap box */}
+              <div className="bg-slate-50 dark:bg-slate-800/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-700 space-y-2">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="font-bold text-slate-500">Site Logistique :</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{currentEntity?.name || 'Magasin Central'}</span>
+                </div>
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200 dark:border-slate-700">
+                  <span className="font-bold text-slate-500">Opérateur responsable :</span>
+                  <span className="font-bold text-slate-900 dark:text-white">{currentUser.name} ({currentUser.role})</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2 pt-1 text-center font-mono">
+                  <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div className="text-[10px] text-slate-400 font-sans">Total</div>
+                    <div className="font-bold text-sm text-slate-900 dark:text-white">{records.length}</div>
+                  </div>
+                  <div className="bg-emerald-50 dark:bg-emerald-950/40 p-2 rounded-lg border border-emerald-200 dark:border-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                    <div className="text-[10px] font-sans">Conformes</div>
+                    <div className="font-bold text-sm">{records.filter(r => r.status === 'CONFORME').length}</div>
+                  </div>
+                  <div className="bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300">
+                    <div className="text-[10px] font-sans">Manquants</div>
+                    <div className="font-bold text-sm">{records.filter(r => r.status === 'MANQUANT').length}</div>
+                  </div>
+                  <div className="bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200 dark:border-amber-900/40 text-amber-700 dark:text-amber-300">
+                    <div className="text-[10px] font-sans">Surplus</div>
+                    <div className="font-bold text-sm">{records.filter(r => r.status === 'SURPLUS').length}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Optional closing notes */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Observations / Note de clôture (facultatif)
+                </label>
+                <textarea
+                  value={closingNotes}
+                  onChange={(e) => setClosingNotes(e.target.value)}
+                  placeholder="Ex : Inventaire périodique Q3, comptage contradictoire terminé..."
+                  rows={2}
+                  className="w-full p-2.5 text-xs rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white focus:border-red-600 outline-none transition"
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setIsCloseConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-700 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                id="btn-confirm-cloture-inventaire"
+                onClick={() => {
+                  onCloseInventory(closingNotes);
+                  setIsCloseConfirmOpen(false);
+                  setClosingNotes('');
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black flex items-center gap-2 shadow-xs transition cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Confirmer et Clôturer</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -75,4 +75,22 @@ export interface WarehouseEntity {
   sapConfig: SapConnectionConfig;
 }
 
-export type NavigationTab = 'dashboard' | 'inventaire' | 'articles' | 'parametres' | 'profil';
+export interface ClosedInventory {
+  id: string;
+  reference: string;
+  closedAt: string;
+  formattedDate: string;
+  closedBy: string;
+  closedByRole: string;
+  entityId: string;
+  entityName: string;
+  totalItems: number;
+  totalConforme: number;
+  totalManquant: number;
+  totalSurplus: number;
+  totalEcart: number;
+  notes?: string;
+  records: InventoryRecord[];
+}
+
+export type NavigationTab = 'dashboard' | 'inventaire' | 'articles' | 'history' | 'parametres' | 'profil';
